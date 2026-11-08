@@ -1,0 +1,88 @@
+# CD = Continuous Delivery / Deployment.
+# This file tells GitHub: "Every time code lands on main, build it ONCE,
+# deliver it to Dev, then (after someone approves) release it to Production."
+#
+# In this practice project, "Production" means a GitHub Release with a
+# downloadable zip. In a real job, the same jobs would deploy to Azure,
+# AWS, a server, etc. Only the deploy steps change; the flow stays the same.
+
+name: cd
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:              # also adds a "Run workflow" button in the Actions tab
+
+permissions:
+  contents: write                 # needed to create a GitHub Release
+
+jobs:
+  # ---------- JOB 1: build once, package once ----------
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Install .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Run tests one more time (safety check)
+        run: dotnet test --configuration Release
+
+      - name: Publish the app (create the ready-to-run files)
+        run: dotnet publish src/CalculatorApp --configuration Release --output publish
+
+      - name: Save the published files as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: calculator-app
+          path: publish
+
+  # ---------- JOB 2: deliver to Dev automatically ----------
+  deploy-dev:
+    needs: build                  # waits until "build" succeeds
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Download the SAME files that were built in job 1
+        uses: actions/download-artifact@v4
+        with:
+          name: calculator-app
+          path: app
+
+      - name: Install .NET 8 runtime
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Smoke test - run the app with sample input
+        run: printf "10\n2\n" | dotnet app/CalculatorApp.dll
+
+  # ---------- JOB 3: release to Production after approval ----------
+  deploy-prod:
+    needs: deploy-dev             # waits until Dev succeeds
+    runs-on: ubuntu-latest
+    environment: production       # add a "required reviewer" here to get an approval gate
+    steps:
+      - name: Download the SAME files again
+        uses: actions/download-artifact@v4
+        with:
+          name: calculator-app
+          path: app
+
+      - name: Zip the app
+        run: cd app && zip -r ../calculator-v1.0.${{ github.run_number }}.zip .
+
+      - name: Create a GitHub Release with the zip attached
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "v1.0.${{ github.run_number }}"
+          "calculator-v1.0.${{ github.run_number }}.zip"
+          --repo "${{ github.repository }}"
+          --target "${{ github.sha }}"
+          --title "Calculator v1.0.${{ github.run_number }}"
+          --notes "Automatic release from commit ${{ github.sha }}"
