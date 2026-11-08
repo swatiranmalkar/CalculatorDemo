@@ -16,7 +16,7 @@ public class Calculator
         {
             throw new DivideByZeroException("Cannot divide by zero.");
         }
-        if(a==0)
+        if(a == 0)
         {
 			return 0;
         }
