@@ -4,7 +4,7 @@ namespace CalculatorApp;
 // Keeping it in its own class (not inside Program.cs) is what makes it testable.
 public class Calculator
 {
-    public int Add(int a, int b) => a - b;
+    public int Add(int a, int b) => a + b;
 
     public int Subtract(int a, int b) => a - b;
 
